@@ -51,6 +51,12 @@ const PLATFORMS_BY_COUNTRY: Record<string, { value: string; label: string }[]> =
     { value: 'goldenpages', label: 'Golden Pages' },
     { value: 'bark_ie', label: 'Bark.com Ireland' },
   ],
+  'Nigeria': [
+    { value: 'google', label: 'Google Business Profile' },
+    { value: 'vconnect', label: 'VConnect (vconnect.com)' },
+    { value: 'businesslist_ng', label: 'BusinessList Nigeria' },
+    { value: 'nairaland_business', label: 'Nairaland Business Directory' },
+  ],
 }
 
 const GLOBAL_PLATFORMS = [
@@ -70,6 +76,11 @@ const CATEGORY_SUGGESTIONS = [
   'optician','physiotherapist','tattoo studio','car dealership','mortgage broker',
   'insurance agent','travel agent','interior designer','architect','contractor',
   'locksmith','towing','pool service',
+  // Nigeria-specific
+  'buka','suya spot','pepper soup joint','event hall','logistics company',
+  'fashion designer','tailor','phone repair','generator repair','car wash',
+  'laundry service','supermarket','pharmacy Nigeria','real estate Nigeria',
+  'hotel Nigeria','printing press','bakery Nigeria','catering Nigeria',
 ]
 
 const COUNTRIES = Object.keys(PLATFORMS_BY_COUNTRY)

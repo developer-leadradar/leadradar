@@ -108,6 +108,12 @@ export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
   const [dncModalOpen, setDncModalOpen] = useState(false)
   const [enriching, setEnriching] = useState(false)
 
+  // First Call Wizard
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [wizardStep, setWizardStep] = useState(0)
+  const [wizardTimer, setWizardTimer] = useState(30)
+  const wizardIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   // Email outreach
   const [emailLogs, setEmailLogs] = useState<Array<{ id: string; sent_at: string; subject: string; template: string; to_email: string; status: string }>>([])
   const [emailPanelOpen, setEmailPanelOpen] = useState(false)
@@ -279,6 +285,92 @@ export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
     else toast.error('DNC check failed')
   }
 
+  // First Call Wizard helpers
+  const WIZARD_STEPS = [
+    {
+      title: 'Confirm timing',
+      prompt: `Check the local time in ${lead?.city ?? 'their city'}. Is it between 9am–5pm their time?`,
+      tip: '🟢 Green dot = good time to call. If red, consider scheduling for later.',
+      duration: 20,
+    },
+    {
+      title: 'Prepare opening',
+      prompt: `"Hi, is this ${lead?.business_name ?? 'the business'}?"`,
+      tip: 'Smile before you dial — they can hear it in your voice.',
+      duration: 15,
+    },
+    {
+      title: 'State your purpose',
+      prompt: `"My name is [Your Name]. I help local businesses like yours get online. I noticed ${lead?.business_name ?? 'your business'} doesn't have a website yet."`,
+      tip: 'Keep it to 1-2 sentences. Do not over-explain yet.',
+      duration: 25,
+    },
+    {
+      title: 'Create curiosity',
+      prompt: `"I'd love to show you a free demo of what your website could look like — completely free to see, no commitment."`,
+      tip: 'You\'re offering value, not selling. Frame it as a gift.',
+      duration: 20,
+    },
+    {
+      title: 'Ask a question',
+      prompt: `"Would you be open to a quick 5-minute call this week to see what I have in mind for ${lead?.business_name ?? 'your business'}?"`,
+      tip: 'Silence after the question is good — wait for their answer.',
+      duration: 30,
+    },
+    {
+      title: 'Handle response',
+      prompt: 'IF YES → Set a date/time and confirm. IF NOT NOW → "When would be a better time?" IF NO → "No problem at all. Would it be okay if I send you a quick email instead?"',
+      tip: 'Every answer is a win. Log the outcome below.',
+      duration: 60,
+    },
+  ]
+
+  function startWizard() {
+    setWizardStep(0)
+    setWizardTimer(WIZARD_STEPS[0].duration)
+    setWizardOpen(true)
+    if (lead?.phone) {
+      navigator.clipboard.writeText(lead.phone).catch(() => {})
+      toast.success('Phone number copied ✓')
+    }
+    // Start countdown
+    wizardIntervalRef.current = setInterval(() => {
+      setWizardTimer(t => {
+        if (t <= 1) {
+          // Auto advance if there are more steps
+          return 0
+        }
+        return t - 1
+      })
+    }, 1000)
+  }
+
+  function wizardNextStep() {
+    if (wizardIntervalRef.current) clearInterval(wizardIntervalRef.current)
+    const nextStep = wizardStep + 1
+    if (nextStep >= WIZARD_STEPS.length) {
+      setWizardOpen(false)
+      setLogOpen(true) // open call log form
+      return
+    }
+    setWizardStep(nextStep)
+    setWizardTimer(WIZARD_STEPS[nextStep].duration)
+    wizardIntervalRef.current = setInterval(() => {
+      setWizardTimer(t => (t <= 1 ? 0 : t - 1))
+    }, 1000)
+  }
+
+  function closeWizard() {
+    if (wizardIntervalRef.current) clearInterval(wizardIntervalRef.current)
+    setWizardOpen(false)
+    setWizardStep(0)
+  }
+
+  // Cleanup wizard timer on unmount
+  useEffect(() => {
+    return () => { if (wizardIntervalRef.current) clearInterval(wizardIntervalRef.current) }
+  }, [])
+
   // Populate email subject/body when template or panel changes
   useEffect(() => {
     if (!emailPanelOpen || !lead) return
@@ -383,9 +475,17 @@ export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
             <Card title="Contact Information">
               {lead.phone ? (
                 <div className="mb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-sm text-gray-900 dark:text-white">{lead.phone}</span>
                     <CopyBtn value={lead.phone} />
+                    <a href={`https://wa.me/${lead.phone.replace(/\D/g,'')}`} target="_blank" rel="noopener noreferrer"
+                      title="Send WhatsApp message"
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors">
+                      <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                      </svg>
+                      WhatsApp
+                    </a>
                     {lead.dnc_status === 'flagged' && (
                       <span className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
                         <AlertTriangle size={12} /> DNC Registry
@@ -467,12 +567,18 @@ export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
 
             {/* Call action */}
             <Card title="Call Action">
-              <button onClick={handleCallAction}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-lg rounded-xl transition-colors flex items-center justify-center gap-3">
-                <Phone size={20} /> CALL {lead.business_name}
-              </button>
-              <p className="text-xs text-gray-400 dark:text-gray-500 text-center mt-2">
-                Copies number to clipboard — dial from your phone app
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <button onClick={handleCallAction}
+                  className="py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm">
+                  <Phone size={16} /> Quick Call
+                </button>
+                <button onClick={startWizard}
+                  className="py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm">
+                  🎯 Call Wizard
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 text-center">
+                Copies number to clipboard — dial from your phone app · <span className="text-emerald-600 dark:text-emerald-400">Wizard = guided first call</span>
               </p>
               {callPrepOpen && (
                 <div className="mt-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-200 dark:border-indigo-800 space-y-2">
@@ -483,7 +589,6 @@ export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
                   <details className="text-xs text-gray-600 dark:text-gray-400">
                     <summary className="cursor-pointer text-indigo-600 dark:text-indigo-400">View call script</summary>
                     <pre className="mt-2 whitespace-pre-wrap text-xs bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                      {/* Script pulled from user settings — shown at runtime */}
                       [Your call script will appear here — set it in Settings → Call Script]
                     </pre>
                   </details>
@@ -796,6 +901,76 @@ export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
           </div>
         </div>
       </div>
+
+      {/* First Call Wizard modal */}
+      {wizardOpen && (() => {
+        const step = WIZARD_STEPS[wizardStep]
+        const pct = Math.round(((wizardStep + 1) / WIZARD_STEPS.length) * 100)
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+            <div className="fixed inset-0 bg-black/60" onClick={closeWizard} />
+            <div className="relative bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl p-6 max-w-lg w-full">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">First Call Wizard — Step {wizardStep + 1} of {WIZARD_STEPS.length}</p>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">{step.title}</h2>
+                </div>
+                <button onClick={closeWizard} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mb-5">
+                <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+              </div>
+
+              {/* Phone & time context */}
+              <div className="flex items-center gap-3 mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                <Phone size={14} className="text-emerald-600 flex-shrink-0" />
+                <span className="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-300">{lead.phone ?? 'No phone'}</span>
+                {lead.timezone && (
+                  <span className={`ml-auto text-xs font-medium ${bhoursStatus === 'good' ? 'text-green-600' : bhoursStatus === 'early_late' ? 'text-amber-500' : 'text-red-500'}`}>
+                    {localDateTime} {bhoursStatus === 'good' ? '✓' : bhoursStatus === 'early_late' ? '⚠' : '✕'}
+                  </span>
+                )}
+              </div>
+
+              {/* Script prompt */}
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 mb-4">
+                <p className="text-base text-gray-900 dark:text-white font-medium leading-relaxed mb-2">{step.prompt}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 italic">{step.tip}</p>
+              </div>
+
+              {/* Timer */}
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 ${wizardTimer <= 5 ? 'border-red-500 text-red-600 animate-pulse' : 'border-emerald-500 text-emerald-600'}`}>
+                    {wizardTimer}
+                  </div>
+                  <span className="text-xs text-gray-400">seconds on this step</span>
+                </div>
+                <span className="text-xs text-gray-400">{lead.business_name}</span>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3">
+                <button onClick={wizardNextStep}
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors">
+                  {wizardStep < WIZARD_STEPS.length - 1 ? `Next →` : '✓ Done — Log call'}
+                </button>
+                {wizardStep > 0 && (
+                  <button onClick={() => { setWizardStep(s => s - 1); setWizardTimer(WIZARD_STEPS[wizardStep - 1].duration) }}
+                    className="px-4 py-3 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 text-sm">
+                    ←
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* DNC override modal */}
       {dncModalOpen && (

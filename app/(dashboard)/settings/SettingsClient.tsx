@@ -63,7 +63,7 @@ Best regards,
 }
 
 const TIMEZONES = [
-  'Africa/Lagos', 'Africa/Accra', 'Africa/Cairo', 'Africa/Johannesburg',
+  'Africa/Lagos', 'Africa/Abuja', 'Africa/Accra', 'Africa/Cairo', 'Africa/Johannesburg', 'Africa/Nairobi',
   'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
   'America/Toronto', 'America/Vancouver', 'America/Sao_Paulo',
   'Europe/London', 'Europe/Dublin', 'Europe/Paris', 'Europe/Berlin',
