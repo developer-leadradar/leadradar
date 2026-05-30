@@ -2,14 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Radar, Target, BarChart3, Settings } from 'lucide-react'
+import { LayoutDashboard, Radar, Target, GraduationCap, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/scan/new', label: 'Scan', icon: Radar },
   { href: '/priority-queue', label: 'Queue', icon: Target },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/tutor-leads', label: 'Tutors', icon: GraduationCap },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 

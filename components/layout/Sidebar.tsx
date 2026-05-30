@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Sun,
   Moon,
+  GraduationCap,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -34,6 +35,7 @@ const navItems = [
   { href: '/scans', label: 'Scan History', icon: History },
   { href: '/priority-queue', label: 'Priority Queue', icon: Target },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/tutor-leads', label: 'TutorLeads', icon: GraduationCap },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
