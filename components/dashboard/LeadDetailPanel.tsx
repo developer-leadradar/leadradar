@@ -36,6 +36,32 @@ const OUTCOME_COLORS: Record<CallOutcome, string> = {
   disconnected:   'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400',
 }
 
+const EMAIL_TEMPLATES = {
+  intro: {
+    label: 'Introduction',
+    subject: "Quick question about {business_name}'s online presence",
+    body: `Hi there,\n\nI came across {business_name} while searching for {category} businesses in {city} and noticed you may not have a website yet.\n\nI build professional websites for local businesses and would love to show you what I could create specifically for {business_name} — completely free to see, no commitment required.\n\nWould you be open to a quick 5-minute conversation this week?\n\nBest regards,\n[Your Name]`,
+  },
+  followup: {
+    label: 'Follow-up',
+    subject: "Following up — {business_name}'s website",
+    body: `Hi again,\n\nI reached out a few days ago about building a website for {business_name}. I wanted to follow up in case my last message got buried.\n\nI genuinely think a professional website could make a real difference for your business in {city}. I'd love to show you a quick demo — no cost, no pressure.\n\nWould this week work for a brief chat?\n\nBest regards,\n[Your Name]`,
+  },
+  demo: {
+    label: 'Demo Invitation',
+    subject: 'I built a demo website for {business_name}',
+    body: `Hi there,\n\nI took the liberty of building a quick demo website for {business_name} — it only takes 30 seconds to look at and I think you'll like what you see.\n\nYou can view it here: {demo_url}\n\nIf you love it, we can talk about turning it into your live website. If it's not quite right, I can adjust it to match your vision exactly.\n\nWhat do you think?\n\nBest regards,\n[Your Name]`,
+  },
+} as const
+
+function replaceTokens(text: string, lead: { business_name?: string; category?: string | null; city?: string | null; demo_url?: string | null }): string {
+  return text
+    .replace(/{business_name}/g, lead.business_name ?? '')
+    .replace(/{category}/g, lead.category ?? '')
+    .replace(/{city}/g, lead.city ?? '')
+    .replace(/{demo_url}/g, lead.demo_url ?? '[demo URL not set — add it in Demo & Proposal]')
+}
+
 interface Props { leadId: string; userId: string; onClose: () => void }
 
 export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
@@ -82,14 +108,24 @@ export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
   const [dncModalOpen, setDncModalOpen] = useState(false)
   const [enriching, setEnriching] = useState(false)
 
+  // Email outreach
+  const [emailLogs, setEmailLogs] = useState<Array<{ id: string; sent_at: string; subject: string; template: string; to_email: string; status: string }>>([])
+  const [emailPanelOpen, setEmailPanelOpen] = useState(false)
+  const [emailTemplate, setEmailTemplate] = useState<'intro' | 'followup' | 'demo'>('intro')
+  const [emailTo, setEmailTo] = useState('')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+
   // Score breakdown
   const [scoreOpen, setScoreOpen] = useState(false)
 
   async function fetchData() {
-    const [{ data: l }, { data: cl }, { data: rem }] = await Promise.all([
+    const [{ data: l }, { data: cl }, { data: rem }, { data: el }] = await Promise.all([
       supabase.from('leads').select('*').eq('id', leadId).single(),
       supabase.from('call_logs').select('*').eq('lead_id', leadId).order('called_at', { ascending: false }),
       supabase.from('reminders').select('*').eq('lead_id', leadId).order('scheduled_for'),
+      supabase.from('email_logs').select('id,sent_at,subject,template,to_email,status').eq('lead_id', leadId).order('sent_at', { ascending: false }),
     ])
     if (l) {
       setLead(l as Lead)
@@ -107,6 +143,8 @@ export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
     }
     setCallLogs((cl ?? []) as CallLog[])
     setReminders((rem ?? []) as Reminder[])
+    setEmailLogs((el ?? []) as Array<{ id: string; sent_at: string; subject: string; template: string; to_email: string; status: string }>)
+    if (l?.email && !emailTo) setEmailTo(l.email)
     setLoading(false)
   }
 
@@ -239,6 +277,39 @@ export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
     const data = await res.json()
     if (data.status) { toast.success(`DNC status: ${data.status}`); fetchData() }
     else toast.error('DNC check failed')
+  }
+
+  // Populate email subject/body when template or panel changes
+  useEffect(() => {
+    if (!emailPanelOpen || !lead) return
+    const tpl = EMAIL_TEMPLATES[emailTemplate]
+    setEmailSubject(replaceTokens(tpl.subject, lead))
+    setEmailBody(replaceTokens(tpl.body, lead))
+  }, [emailTemplate, emailPanelOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function sendEmailOutreach() {
+    if (!emailTo) { toast.error('Enter a recipient email address'); return }
+    setSendingEmail(true)
+    try {
+      const res = await fetch(`/api/leads/${leadId}/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: emailTo,
+          template: emailTemplate,
+          customSubject: emailSubject,
+          customBody: emailBody,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Send failed')
+      toast.success('Email sent ✓')
+      setEmailPanelOpen(false)
+      fetchData()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to send email')
+    }
+    setSendingEmail(false)
   }
 
   if (loading || !lead) {
@@ -534,6 +605,99 @@ export default function LeadDetailPanel({ leadId, userId, onClose }: Props) {
                   Save
                 </button>
               </div>
+            </Card>
+
+            {/* Email Outreach */}
+            <Card title="Email Outreach" action={
+              <button onClick={() => setEmailPanelOpen(o => !o)}
+                className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                <Mail size={12} /> Compose email
+              </button>
+            }>
+              {emailPanelOpen ? (
+                <div className="space-y-3">
+                  {/* Template selector */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">Template</label>
+                    <div className="flex gap-2">
+                      {(Object.keys(EMAIL_TEMPLATES) as Array<keyof typeof EMAIL_TEMPLATES>).map(key => (
+                        <button key={key} onClick={() => setEmailTemplate(key)}
+                          className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                            emailTemplate === key
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                          }`}>
+                          {EMAIL_TEMPLATES[key].label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* To */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">To (email address)</label>
+                    <input
+                      type="email" value={emailTo} onChange={e => setEmailTo(e.target.value)}
+                      className={inputCls} placeholder="owner@business.com"
+                    />
+                  </div>
+                  {/* Subject */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">Subject</label>
+                    <input
+                      type="text" value={emailSubject} onChange={e => setEmailSubject(e.target.value)}
+                      className={inputCls}
+                    />
+                  </div>
+                  {/* Body */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">Message</label>
+                    <textarea
+                      value={emailBody} onChange={e => setEmailBody(e.target.value)}
+                      rows={8} className={`${inputCls} resize-y`}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Tokens like <span className="font-mono">{'{business_name}'}</span> are already replaced above. Edit freely.
+                  </p>
+                  <div className="flex gap-2">
+                    <button onClick={sendEmailOutreach} disabled={sendingEmail || !emailTo}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg flex items-center gap-2">
+                      {sendingEmail ? (
+                        <><svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Sending…</>
+                      ) : (
+                        <><Mail size={13} /> Send email</>
+                      )}
+                    </button>
+                    <button onClick={() => setEmailPanelOpen(false)}
+                      className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {emailLogs.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-2">No emails sent yet</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {emailLogs.map(log => (
+                        <div key={log.id} className="flex items-start justify-between gap-2 text-xs border border-gray-100 dark:border-gray-800 rounded-lg p-2.5">
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-800 dark:text-gray-200 truncate">{log.subject}</p>
+                            <p className="text-gray-400 mt-0.5">To: {log.to_email} · {log.template}</p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            <span className={`px-1.5 py-0.5 rounded-full font-medium ${log.status === 'sent' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                              {log.status}
+                            </span>
+                            <span className="text-gray-400">{format(new Date(log.sent_at), 'MMM d, h:mm a')}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </Card>
 
             {/* Reminders */}
