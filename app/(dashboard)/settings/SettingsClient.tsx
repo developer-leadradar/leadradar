@@ -707,8 +707,22 @@ export default function SettingsClient({ profile }: Props) {
       {/* Data Management */}
       <Section title="Data Management">
         <div className="space-y-6">
-          {/* Export */}
+          {/* User Guide Download */}
           <div>
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1">User Guide</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              Download the complete LeadRadar PDF guide — covers every feature from first scan to closing a deal.
+            </p>
+            <a
+              href="/api/guide"
+              download="LeadRadar-User-Guide.pdf"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors">
+              <Download size={14} /> Download PDF Guide
+            </a>
+          </div>
+
+          {/* Export */}
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-5">
             <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1">Export my data</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
               Download all your leads, call logs, and reminders as a text file (CSV format, opens in Excel/Sheets).
