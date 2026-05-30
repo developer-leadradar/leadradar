@@ -65,7 +65,10 @@ export async function middleware(request: NextRequest) {
         const url = request.nextUrl.clone()
         url.pathname = '/login'
         url.searchParams.set('expired', '1')
-        return NextResponse.redirect(url)
+        const expiredResponse = NextResponse.redirect(url)
+        // CRITICAL: delete the stale last_activity cookie so re-login works
+        expiredResponse.cookies.delete('last_activity')
+        return expiredResponse
       }
     }
     // Update last activity timestamp
@@ -76,15 +79,23 @@ export async function middleware(request: NextRequest) {
     })
   }
 
+  // Fresh login: user just authenticated and is being redirected to dashboard —
+  // stamp a fresh last_activity so the inactivity check starts from now
+  if (user && isAuthRoute) {
+    const redirectResponse = NextResponse.redirect(
+      new URL('/dashboard', request.url)
+    )
+    redirectResponse.cookies.set('last_activity', Date.now().toString(), {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7,
+    })
+    return redirectResponse
+  }
+
   if (!user && !isPublicRoute && !pathname.startsWith('/api/')) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
-
-  if (user && isAuthRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 
