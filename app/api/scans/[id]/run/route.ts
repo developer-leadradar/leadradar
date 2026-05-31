@@ -210,8 +210,86 @@ export async function POST(
     }
   }
 
+  // ── OpenStreetMap / Overpass API (free Yelp alternative, no API key needed) ─
+  if (filters.platforms.includes('openstreetmap') || filters.platforms.includes('yelp')) {
+    const osmCities = cities.length ? cities : [country]
+    const osmCategoryMap: Record<string, string[]> = {
+      restaurant: ['restaurant', 'cafe', 'fast_food', 'food_court'],
+      cafe: ['cafe', 'coffee_shop'],
+      bar: ['bar', 'pub', 'nightclub'],
+      hotel: ['hotel', 'motel', 'guest_house'],
+      salon: ['hairdresser', 'beauty_salon', 'nail_salon'],
+      gym: ['gym', 'fitness_centre', 'sports_centre'],
+      dentist: ['dentist'],
+      doctor: ['doctors', 'clinic'],
+      pharmacy: ['pharmacy'],
+      plumber: ['plumber'],
+      electrician: ['electrician'],
+      mechanic: ['car_repair', 'vehicle_inspection'],
+      lawyer: ['lawyer', 'notary'],
+      accountant: ['accountant'],
+      photographer: ['photographer'],
+      florist: ['florist'],
+      bakery: ['bakery'],
+      grocery: ['supermarket', 'convenience'],
+      optician: ['optician'],
+      tattoo: ['tattoo'],
+      cleaning: ['cleaning'],
+      locksmith: ['locksmith'],
+    }
+    const cat = filters.category.toLowerCase()
+    const osmTags = osmCategoryMap[cat] ?? [cat.replace(/\s+/g, '_')]
+    const tagQuery = osmTags.map(t => `node["amenity"="${t}"];way["amenity"="${t}"];`).join('')
+
+    for (const city of osmCities) {
+      try {
+        const overpassQuery = `[out:json][timeout:25];area[name="${city}"]->.searchArea;(${tagQuery});out body center 100;`
+        const resp = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(overpassQuery)}`,
+          signal: AbortSignal.timeout(30000),
+        })
+        if (!resp.ok) { platformsComplete.push('openstreetmap'); continue }
+        const osmData = await resp.json()
+        const elements = osmData.elements ?? []
+
+        for (const el of elements) {
+          const tags = el.tags ?? {}
+          const hasWebsite = !!(tags.website || tags['contact:website'] || tags.url)
+          if (filters.no_website && hasWebsite) continue
+          if (!tags.name) continue
+
+          const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || null
+          const street = [tags['addr:housenumber'], tags['addr:street']].filter(Boolean).join(' ')
+          const address = [street, tags['addr:city'] || city, tags['addr:postcode']].filter(Boolean).join(', ')
+
+          await processLead({
+            business_name: tags.name,
+            category: filters.category,
+            phone,
+            address: address || null,
+            city: tags['addr:city'] || city,
+            country,
+            country_code: countryToCode(country),
+            rating: null,
+            review_count: 0,
+            has_website: hasWebsite,
+            website_url: tags.website || tags['contact:website'] || null,
+            platforms_found_on: ['openstreetmap'],
+            platform_profile_urls: {},
+          })
+        }
+        platformsComplete.push('openstreetmap')
+      } catch {
+        platformsError.push('openstreetmap')
+      }
+    }
+    await broadcast({ leadsFound: totalFound, duplicatesMerged, platformsComplete, platformsError })
+  }
+
   // ── Apify (for all other platforms) ─────────────────────────────────────
-  const apifyPlatforms = filters.platforms.filter(p => !['google', 'yelp'].includes(p))
+  const apifyPlatforms = filters.platforms.filter(p => !['google', 'yelp', 'openstreetmap'].includes(p))
   if (apifyPlatforms.length > 0 && apifyKey) {
     for (const platform of apifyPlatforms) {
       try {
