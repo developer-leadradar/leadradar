@@ -82,8 +82,100 @@ export async function POST(
     totalFound++
   }
 
-  // ── Google Places ───────────────────────────────────────────────────────
-  if (filters.platforms.includes('google') && googleKey) {
+  // ── Google Maps via Apify scraper (primary — returns real Google Maps URLs) ─
+  if (filters.platforms.includes('google') && apifyKey) {
+    const searchCities = cities.length ? cities : [country]
+    for (const city of searchCities) {
+      try {
+        const limit = Math.min(
+          Math.ceil(filters.result_count / Math.max(searchCities.length, 1)),
+          100
+        )
+        const input = {
+          searchStringsArray: [`${filters.category} in ${city}, ${country}`],
+          maxCrawledPlacesPerSearch: limit,
+          language: 'en',
+          exportPlaceUrls: true,
+          includeWebsiteContents: false,
+          skipClosedPlaces: false,
+        }
+
+        const runResp = await fetch(
+          `https://api.apify.com/v2/acts/compass~crawler-google-places/runs?token=${apifyKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(input),
+            signal: AbortSignal.timeout(30000),
+          }
+        )
+
+        if (!runResp.ok) { platformsError.push('google'); continue }
+        const run = await runResp.json()
+        const runId = run.data?.id
+        if (!runId) { platformsError.push('google'); continue }
+
+        // Poll for completion — Google Maps scraper can take 1-3 minutes
+        let status = 'RUNNING'
+        for (let i = 0; i < 48 && status === 'RUNNING'; i++) {
+          await new Promise(r => setTimeout(r, 5000))
+          const statusResp = await fetch(
+            `https://api.apify.com/v2/actor-runs/${runId}?token=${apifyKey}`,
+            { signal: AbortSignal.timeout(10000) }
+          )
+          if (statusResp.ok) {
+            const s = await statusResp.json()
+            status = s.data?.status ?? 'RUNNING'
+          }
+          await broadcast({ leadsFound: totalFound, duplicatesMerged, platformsComplete, platformsError })
+        }
+
+        if (status !== 'SUCCEEDED') { platformsError.push('google'); continue }
+
+        const dataResp = await fetch(
+          `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${apifyKey}&limit=500`,
+          { signal: AbortSignal.timeout(30000) }
+        )
+        if (!dataResp.ok) { platformsError.push('google'); continue }
+        const items = await dataResp.json()
+
+        for (const item of items) {
+          const hasWebsite = !!(item.website)
+          if (filters.no_website && hasWebsite) continue
+
+          const phone = item.phone || item.phoneUnformatted || null
+          const googleMapsUrl = item.url || null        // real Google Maps URL
+          const placeId = item.placeId || null
+
+          await processLead({
+            business_name: item.title || item.name || 'Unknown',
+            category: filters.category,
+            phone,
+            address: item.address || null,
+            city: item.city || city,
+            state_province: item.state || null,
+            country,
+            country_code: countryToCode(country),
+            rating: typeof item.totalScore === 'number' ? item.totalScore : null,
+            review_count: item.reviewsCount ?? 0,
+            has_website: hasWebsite,
+            website_url: item.website || null,
+            platforms_found_on: ['google'],
+            platform_profile_urls: googleMapsUrl ? { google: googleMapsUrl } : {},
+            google_place_id: placeId,
+          })
+        }
+
+        platformsComplete.push('google')
+      } catch {
+        platformsError.push('google')
+      }
+    }
+    await broadcast({ leadsFound: totalFound, duplicatesMerged, platformsComplete, platformsError })
+  }
+
+  // ── Google Places API (official — only used if Apify unavailable) ────────
+  if (filters.platforms.includes('google') && googleKey && !platformsComplete.includes('google') && !platformsError.includes('google')) {
     const searchCities = cities.length ? cities : [country]
     for (const city of searchCities) {
       try {
@@ -103,7 +195,7 @@ export async function POST(
             headers: {
               'Content-Type': 'application/json',
               'X-Goog-Api-Key': googleKey,
-              'X-Goog-FieldMask': 'places.displayName,places.nationalPhoneNumber,places.websiteUri,places.rating,places.userRatingCount,places.formattedAddress,places.businessStatus,places.googleMapsUri,places.id,places.shortFormattedAddress,places.types',
+              'X-Goog-FieldMask': 'places.displayName,places.nationalPhoneNumber,places.websiteUri,places.rating,places.userRatingCount,places.formattedAddress,places.businessStatus,places.googleMapsUri,places.id',
             },
             body: JSON.stringify(body),
             signal: AbortSignal.timeout(15000),
@@ -111,6 +203,7 @@ export async function POST(
 
           if (!resp.ok) { platformsError.push('google'); break }
           const data = await resp.json()
+          if (data.error) { platformsError.push('google'); break }
           const places = data.places ?? []
           nextPageToken = data.nextPageToken
 
@@ -119,14 +212,13 @@ export async function POST(
             const hasWebsite = !!(p.websiteUri)
             if (filters.no_website && hasWebsite) continue
 
-            const addressParts = (p.formattedAddress ?? '').split(',')
             await processLead({
               business_name: p.displayName?.text ?? 'Unknown',
               category: filters.category,
               phone: p.nationalPhoneNumber ?? null,
               address: p.formattedAddress ?? null,
-              city: city,
-              country: country,
+              city,
+              country,
               country_code: countryToCode(country),
               rating: p.rating ?? null,
               review_count: p.userRatingCount ?? 0,
@@ -143,8 +235,8 @@ export async function POST(
           if (!nextPageToken || fetched >= limit) break
         } while (true)
 
-        platformsComplete.push('google')
-      } catch (e) {
+        if (!platformsError.includes('google')) platformsComplete.push('google')
+      } catch {
         platformsError.push('google')
       }
     }
@@ -289,7 +381,7 @@ export async function POST(
   }
 
   // ── Apify (for all other platforms) ─────────────────────────────────────
-  const apifyPlatforms = filters.platforms.filter(p => !['google', 'yelp', 'openstreetmap'].includes(p))
+  const apifyPlatforms = filters.platforms.filter(p => !['google', 'google_maps', 'yelp', 'openstreetmap'].includes(p))
   if (apifyPlatforms.length > 0 && apifyKey) {
     for (const platform of apifyPlatforms) {
       try {
