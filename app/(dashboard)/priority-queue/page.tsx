@@ -47,50 +47,40 @@ function CallingWindowsPanel({ userTz }: { userTz: string }) {
         <p className="text-xs text-muted-foreground">Your timezone: {userTz}</p>
       </CardHeader>
       <CardContent className="p-0">
-        {/* Column headers */}
-        <div className="grid grid-cols-3 px-4 py-1.5 bg-muted/40 border-y text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          <span>Market</span>
-          <span>Their hours</span>
-          <span>Call from Lagos</span>
-        </div>
-
         <div className="divide-y">
           {windows.map((w) => {
             const isActive = w.isActiveNow
             return (
               <div
                 key={w.market}
-                className={`grid grid-cols-3 items-center px-4 py-2.5 text-sm transition-colors ${
+                className={`px-4 py-2.5 transition-colors ${
                   isActive
                     ? 'bg-green-50 dark:bg-green-950/30 border-l-2 border-l-green-500'
                     : 'hover:bg-muted/30'
                 }`}
               >
-                {/* Market name */}
-                <div className="flex items-center gap-2 min-w-0 pr-2">
-                  <span className={`font-medium truncate ${isActive ? 'text-green-700 dark:text-green-400' : ''}`}>
+                {/* Row 1: Market name + Now badge */}
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <span className={`text-sm font-semibold leading-tight ${
+                    isActive ? 'text-green-700 dark:text-green-400' : ''
+                  }`}>
                     {w.market}
                   </span>
-                </div>
-
-                {/* Their business hours */}
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  {w.marketHours}
-                </span>
-
-                {/* Your calling window */}
-                <div className="flex items-center gap-1.5">
-                  <span className={`text-xs font-medium whitespace-nowrap ${
-                    isActive ? 'text-green-600 dark:text-green-400' : 'text-foreground'
-                  }`}>
-                    {w.yourCallTime}
-                  </span>
                   {isActive && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500 text-white text-[10px] font-semibold shrink-0">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500 text-white text-[10px] font-bold shrink-0">
                       <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                      Now
+                      LIVE
                     </span>
                   )}
+                </div>
+
+                {/* Row 2: Their hours → Your window */}
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                  <span>{w.marketHours}</span>
+                  <span className="text-muted-foreground/50">→</span>
+                  <span className={`font-medium ${isActive ? 'text-green-600 dark:text-green-400' : 'text-foreground'}`}>
+                    {w.yourCallTime} WAT
+                  </span>
                 </div>
               </div>
             )
