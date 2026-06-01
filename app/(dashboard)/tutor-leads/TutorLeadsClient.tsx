@@ -40,7 +40,11 @@ interface ScanResult {
   found: number
   newLeads: number
   duplicatesSkipped: number
+  redditFound?: number
+  stackExchangeFound?: number
+  rawPostsScanned?: number
   subredditsSearched: string[]
+  bySource?: { source: string; found: number; added: number }[]
   message: string
 }
 
@@ -48,6 +52,7 @@ interface Props {
   userId: string
   initialLeads: TutorLead[]
   tableExists: boolean
+  sqlEditorUrl?: string
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -90,22 +95,111 @@ const SOURCE_ICONS: Record<LeadSource, React.ReactNode> = {
   other:     <Globe size={11} className="text-gray-400" />,
 }
 
-// Subreddits to scan
-const SUBREDDIT_OPTIONS = [
-  { value: 'UniUK',       label: 'r/UniUK', desc: 'UK university students' },
-  { value: 'college',     label: 'r/college', desc: 'US college students' },
-  { value: 'HomeworkHelp',label: 'r/HomeworkHelp', desc: 'General subject help' },
-  { value: 'proofreading',label: 'r/proofreading', desc: 'Proofreading requests' },
-  { value: 'learnmath',   label: 'r/learnmath', desc: 'Math help seekers' },
-  { value: 'GradSchool',  label: 'r/GradSchool', desc: 'Graduate students' },
-  { value: 'AskAcademia', label: 'r/AskAcademia', desc: 'Academic questions' },
-  { value: 'slatestarcodex', label: 'r/studytips', desc: 'Study tips seekers' },
-  { value: 'IBO',         label: 'r/IBO', desc: 'IB students' },
-  { value: 'alevel',      label: 'r/alevel', desc: 'A-Level students (UK)' },
-  { value: '6thForm',     label: 'r/6thForm', desc: '6th form UK students' },
-  { value: 'GCSE',        label: 'r/GCSE', desc: 'GCSE students (UK)' },
-  { value: 'IELTS',       label: 'r/IELTS', desc: 'IELTS test takers' },
+// ── Platform options ───────────────────────────────────────────────────────────
+const PLATFORM_OPTIONS = [
+  {
+    value: 'reddit',
+    label: 'Reddit',
+    desc: 'Public posts from student subreddits — no API key needed',
+    icon: <span className="text-orange-500 font-bold text-xs">r/</span>,
+  },
+  {
+    value: 'stackexchange',
+    label: 'Stack Exchange',
+    desc: 'Academia SE + English Language Learners SE',
+    icon: <span className="text-blue-500 font-bold text-xs">SE</span>,
+  },
 ]
+
+const STACK_EXCHANGE_SITES = [
+  { value: 'academia', label: 'Academia SE', desc: 'Students asking about academic life & tutoring' },
+  { value: 'ell',      label: 'English Language Learners', desc: 'ESL/EFL learners seeking language help' },
+]
+
+// ── Subreddits — organised by category ────────────────────────────────────────
+interface SubredditCategory {
+  label: string
+  emoji: string
+  items: { value: string; label: string; desc: string }[]
+}
+
+const SUBREDDIT_CATEGORIES: SubredditCategory[] = [
+  {
+    label: 'UK Students',
+    emoji: '🇬🇧',
+    items: [
+      { value: 'UniUK',    label: 'r/UniUK',    desc: 'UK university students' },
+      { value: 'alevel',   label: 'r/alevel',   desc: 'A-Level students' },
+      { value: '6thForm',  label: 'r/6thForm',  desc: '6th form students' },
+      { value: 'GCSE',     label: 'r/GCSE',     desc: 'GCSE students' },
+      { value: 'IBO',      label: 'r/IBO',      desc: 'International Baccalaureate' },
+      { value: 'uktax',    label: 'r/UKPersonalFinance', desc: 'UK finance/accounting students' },
+    ],
+  },
+  {
+    label: 'US & Canada Students',
+    emoji: '🇺🇸',
+    items: [
+      { value: 'college',            label: 'r/college',            desc: 'US college students' },
+      { value: 'ApplyingToCollege',  label: 'r/ApplyingToCollege',  desc: 'High school seniors (US)' },
+      { value: 'SAT',                label: 'r/SAT',                desc: 'SAT exam prep' },
+      { value: 'ACT',                label: 'r/ACT',                desc: 'ACT exam prep' },
+      { value: 'premed',             label: 'r/premed',             desc: 'Pre-med US students' },
+      { value: 'lawschool',          label: 'r/lawschool',          desc: 'US law students' },
+    ],
+  },
+  {
+    label: 'Graduate & Professional',
+    emoji: '🎓',
+    items: [
+      { value: 'GradSchool',  label: 'r/GradSchool',  desc: 'Graduate students worldwide' },
+      { value: 'AskAcademia', label: 'r/AskAcademia', desc: 'Academic questions' },
+      { value: 'MBA',         label: 'r/MBA',         desc: 'MBA students' },
+      { value: 'nursing',     label: 'r/nursing',     desc: 'Nursing students' },
+      { value: 'CFA',         label: 'r/CFA',         desc: 'CFA exam candidates' },
+    ],
+  },
+  {
+    label: 'Exam Prep',
+    emoji: '📝',
+    items: [
+      { value: 'IELTS',  label: 'r/IELTS',  desc: 'IELTS test takers' },
+      { value: 'MCAT',   label: 'r/MCAT',   desc: 'Medical school entrance exam' },
+      { value: 'LSAT',   label: 'r/LSAT',   desc: 'Law school entrance exam' },
+      { value: 'GRE',    label: 'r/GRE',    desc: 'Graduate school exam' },
+      { value: 'GMAT',   label: 'r/GMAT',   desc: 'Business school exam' },
+      { value: 'Mcat',   label: 'r/step1',  desc: 'USMLE Step 1 medical exam' },
+    ],
+  },
+  {
+    label: 'Academic Help',
+    emoji: '📚',
+    items: [
+      { value: 'HomeworkHelp',  label: 'r/HomeworkHelp',  desc: 'Direct help requests' },
+      { value: 'tutors',        label: 'r/tutors',        desc: 'Students looking for tutors' },
+      { value: 'proofreading',  label: 'r/proofreading',  desc: 'Proofreading requests' },
+      { value: 'studybuddy',    label: 'r/studybuddy',    desc: 'Study partners (often need tutor)' },
+      { value: 'learnmath',     label: 'r/learnmath',     desc: 'Math help seekers' },
+      { value: 'studytips',     label: 'r/studytips',     desc: 'Students improving study habits' },
+    ],
+  },
+  {
+    label: 'Subject-Specific',
+    emoji: '🔬',
+    items: [
+      { value: 'learnprogramming', label: 'r/learnprogramming', desc: 'CS / coding students' },
+      { value: 'learnpython',      label: 'r/learnpython',      desc: 'Python learners' },
+      { value: 'AskPhysics',       label: 'r/AskPhysics',       desc: 'Physics help' },
+      { value: 'chemhelp',         label: 'r/chemhelp',         desc: 'Chemistry help' },
+      { value: 'biology',          label: 'r/biology',          desc: 'Biology students' },
+      { value: 'statistics',       label: 'r/statistics',       desc: 'Stats students' },
+      { value: 'Accounting',       label: 'r/Accounting',       desc: 'Accounting students' },
+      { value: 'EnglishLearning',  label: 'r/EnglishLearning',  desc: 'ESL / English learners' },
+      { value: 'languagelearning', label: 'r/languagelearning', desc: 'Language learners' },
+    ],
+  },
+]
+
 
 const SQL_SETUP = `-- Run this once in your Supabase SQL Editor
 CREATE TABLE IF NOT EXISTS public.tutor_leads (
@@ -132,39 +226,116 @@ ALTER TABLE public.tutor_leads ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users access own tutor_leads" ON public.tutor_leads
   FOR ALL USING (auth.uid() = user_id);`
 
-// Lead-finding tips
+// ── "Where to Look" sources ────────────────────────────────────────────────────
 const FINDING_SOURCES = [
   {
-    category: 'Reddit (auto-scanned)',
-    icon: <span className="text-orange-500 font-bold text-sm">r/</span>,
-    tips: [
-      { label: 'r/UniUK', desc: 'UK university students asking for help', url: 'https://reddit.com/r/UniUK' },
-      { label: 'r/HomeworkHelp', desc: 'Students needing subject guidance', url: 'https://reddit.com/r/HomeworkHelp' },
-      { label: 'r/proofreading', desc: 'Direct proofreading requests', url: 'https://reddit.com/r/proofreading' },
-      { label: 'r/IELTS', desc: 'IELTS preparation seekers', url: 'https://reddit.com/r/IELTS' },
-    ],
-  },
-  {
-    category: 'Facebook Groups (manual)',
+    category: 'Facebook Groups',
+    badge: 'Manual',
+    badgeColor: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     icon: <Users size={14} className="text-blue-500" />,
+    intro: 'Join these groups, post your offer once a week, and reply to anyone asking for help. Facebook has millions of student groups.',
     tips: [
-      { label: 'Nigerian Students UK', desc: 'Nigerian students at UK universities', url: null },
-      { label: 'International Students London', desc: 'Pan-university international student group', url: null },
-      { label: 'IELTS Preparation Groups', desc: 'Students preparing for IELTS', url: null },
+      { label: 'Nigerian Students in UK', desc: 'Nigerian students at UK universities — highly active', url: 'https://www.facebook.com/search/groups?q=Nigerian+students+UK' },
+      { label: 'International Students UK', desc: 'Pan-university international student community', url: 'https://www.facebook.com/search/groups?q=international+students+UK+university' },
+      { label: 'IELTS Preparation Group', desc: 'Students preparing for IELTS exam', url: 'https://www.facebook.com/search/groups?q=IELTS+preparation+study+group' },
+      { label: 'UK Students Help & Support', desc: 'General academic help for UK students', url: 'https://www.facebook.com/search/groups?q=UK+students+help+support' },
+      { label: 'Maths Tutoring UK', desc: 'Parents and students seeking maths tutors', url: 'https://www.facebook.com/search/groups?q=maths+tutoring+UK' },
+      { label: 'Essay & Assignment Help', desc: 'Students asking for proofreading, essays', url: 'https://www.facebook.com/search/groups?q=essay+assignment+help+students' },
+      { label: 'Study Abroad Students', desc: 'International students adapting to new education systems', url: 'https://www.facebook.com/search/groups?q=study+abroad+students+university' },
+      { label: 'African Students UK Network', desc: 'African international students in the UK', url: 'https://www.facebook.com/search/groups?q=African+students+UK' },
     ],
+    template: `Hi everyone! 👋 I'm an online tutor specialising in [subject] for university and A-Level students. I offer 1-on-1 sessions with a free 30-minute trial. If you or anyone you know is struggling, feel free to DM me. Happy to help! 📚`,
   },
   {
-    category: 'LinkedIn (manual)',
-    icon: <Linkedin size={14} className="text-blue-600" />,
+    category: 'Twitter / X',
+    badge: 'Live search',
+    badgeColor: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+    icon: <span className="text-sky-500 font-bold text-xs">𝕏</span>,
+    intro: 'Students post publicly when they\'re desperate for help. These live searches surface fresh requests in real-time.',
     tips: [
-      { label: 'Search: "Looking for tutor"', desc: 'Filter by university, degree level', url: null },
-      { label: 'Post weekly: "I offer tutoring for..."', desc: 'Inbound inquiries come to you', url: null },
+      { label: '"need a tutor"', desc: 'Direct tutor requests — check daily', url: 'https://twitter.com/search?q=%22need+a+tutor%22&f=live' },
+      { label: '"looking for tutor"', desc: 'Active searches for tutoring', url: 'https://twitter.com/search?q=%22looking+for+tutor%22&f=live' },
+      { label: '"need help with homework"', desc: 'Homework struggles — high volume', url: 'https://twitter.com/search?q=%22need+help+with+homework%22&f=live' },
+      { label: '"need proofreading"', desc: 'Essay/dissertation proofreading requests', url: 'https://twitter.com/search?q=%22need+proofreading%22+OR+%22proofread+my%22&f=live' },
+      { label: '"struggling with" university', desc: 'Students expressing academic struggles', url: 'https://twitter.com/search?q=%22struggling+with%22+university+student&f=live' },
+      { label: '#NeedATutor or #TutoringHelp', desc: 'Tutor-seeking hashtags', url: 'https://twitter.com/search?q=%23NeedATutor+OR+%23TutoringHelp&f=live' },
     ],
+    template: null,
+  },
+  {
+    category: 'Discord',
+    badge: 'Manual',
+    badgeColor: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+    icon: <span className="text-indigo-500 font-bold text-xs">DC</span>,
+    intro: 'Discord has thousands of student servers. Join the "help-wanted" or "homework-help" channels and offer your services when someone asks.',
+    tips: [
+      { label: 'Search "homework help" on Discord', desc: 'Discover servers with hw-help channels', url: 'https://discord.com/servers' },
+      { label: 'The Homework Help Server', desc: 'Dedicated homework help Discord community', url: 'https://discord.gg/homework' },
+      { label: 'Study Together', desc: 'Large student community (hundreds of thousands of members)', url: 'https://discord.gg/studytogether' },
+      { label: 'Subject-specific servers', desc: 'Search "[subject] Discord server" on Google — every major subject has one', url: null },
+    ],
+    template: `Hey! I saw you need help with [subject]. I'm an online tutor who specialises in this — I offer a free 30-minute trial session. DM me if you're interested 📚`,
+  },
+  {
+    category: 'Telegram',
+    badge: 'Manual',
+    badgeColor: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+    icon: <span className="text-sky-500 font-bold text-xs">TG</span>,
+    intro: 'Many African and international student communities organise on Telegram. These public groups are very active.',
+    tips: [
+      { label: 'Search "IELTS" in Telegram', desc: 'Thousands of IELTS prep groups — students seeking help', url: 'https://t.me/s/IELTS' },
+      { label: 'Search "students UK" in Telegram', desc: 'International student communities in the UK', url: null },
+      { label: 'Search "university help" in Telegram', desc: 'Assignment and coursework help groups', url: null },
+      { label: 'Nigerian Students Abroad groups', desc: 'Very active with students needing academic support', url: null },
+    ],
+    template: `Hi! I noticed this group has many students needing academic support. I offer online tutoring in [subject] — 1-on-1, flexible hours, free trial session. DM me if interested 🎓`,
+  },
+  {
+    category: 'Quora',
+    badge: 'Searchable',
+    badgeColor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    icon: <span className="text-red-600 font-bold text-xs">Qu</span>,
+    intro: 'Quora has students asking academic questions daily. Reply helpfully, then mention you offer tutoring in your bio or reply.',
+    tips: [
+      { label: '"Need a tutor for mathematics"', desc: 'Math tutoring seekers', url: 'https://www.quora.com/search?q=need+a+tutor+for+mathematics' },
+      { label: '"How do I find a good tutor"', desc: 'Students actively looking for tutors', url: 'https://www.quora.com/search?q=how+do+I+find+a+good+tutor' },
+      { label: '"Need help with my essay"', desc: 'Proofreading and writing help seekers', url: 'https://www.quora.com/search?q=need+help+with+my+essay' },
+      { label: '"How can I improve my IELTS score"', desc: 'IELTS exam seekers — perfect audience', url: 'https://www.quora.com/search?q=how+can+I+improve+my+IELTS+score' },
+    ],
+    template: null,
+  },
+  {
+    category: 'Reddit (auto-scanned)',
+    badge: 'Auto',
+    badgeColor: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+    icon: <span className="text-orange-500 font-bold text-sm">r/</span>,
+    intro: 'Use the "Find Students" tab to automatically scan these subreddits. When you find a post, reply there and then DM the student.',
+    tips: [
+      { label: 'r/tutors', desc: 'Students posting directly: "I need a tutor for..."', url: 'https://reddit.com/r/tutors' },
+      { label: 'r/HomeworkHelp', desc: 'High volume — students asking for subject help daily', url: 'https://reddit.com/r/HomeworkHelp' },
+      { label: 'r/proofreading', desc: 'Proofreading requests posted daily', url: 'https://reddit.com/r/proofreading' },
+      { label: 'r/IELTS', desc: 'IELTS preparation seekers', url: 'https://reddit.com/r/IELTS' },
+      { label: 'r/UniUK', desc: 'UK university students asking for help', url: 'https://reddit.com/r/UniUK' },
+    ],
+    template: `Hi u/[username]! I saw your post about needing help with [subject]. I'm an online tutor who specialises in this — I could help you [solve the specific problem they mentioned]. I offer a free 30-minute trial. DM me if you'd like to give it a try!`,
+  },
+  {
+    category: 'LinkedIn',
+    badge: 'Manual',
+    badgeColor: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    icon: <Linkedin size={14} className="text-blue-600" />,
+    intro: 'LinkedIn works well for university and professional students (IELTS, MBA, CFA). Post weekly and search for student posts.',
+    tips: [
+      { label: 'Post weekly: "I offer tutoring for..."', desc: 'Regular posting builds inbound inquiries over time', url: null },
+      { label: 'Search "looking for tutor" posts', desc: 'Filter LinkedIn feed by this keyword weekly', url: 'https://www.linkedin.com/search/results/content/?keywords=%22looking+for+tutor%22' },
+      { label: 'Connect with students at target universities', desc: 'Connect + send note: "I offer tutoring — here if you need help"', url: null },
+    ],
+    template: `Struggling with [subject] as a student? I offer online 1-on-1 tutoring tailored to your specific needs. Sessions are flexible, affordable, and I offer a free 30-minute trial. DM me or comment below if you're interested! 📚 #OnlineTutoring #[Subject]Tutor`,
   },
 ]
 
 // ── Main Component ─────────────────────────────────────────────────────────────
-export default function TutorLeadsClient({ userId, initialLeads, tableExists }: Props) {
+export default function TutorLeadsClient({ userId, initialLeads, tableExists, sqlEditorUrl }: Props) {
   const supabase = createClient()
   const [leads, setLeads] = useState<TutorLead[]>(initialLeads)
   const [search, setSearch] = useState('')
@@ -174,11 +345,14 @@ export default function TutorLeadsClient({ userId, initialLeads, tableExists }: 
   // SQL setup
   const [showSql, setShowSql] = useState(false)
   const [copiedSql, setCopiedSql] = useState(false)
+  const [checkingTable, setCheckingTable] = useState(false)
 
   // Scan form
+  const [scanPlatforms, setScanPlatforms] = useState<string[]>(['reddit'])
+  const [scanStackSites, setScanStackSites] = useState<string[]>(['academia'])
   const [scanSubjects, setScanSubjects] = useState<string[]>(['Mathematics', 'Academic Writing'])
   const [scanServices, setScanServices] = useState<ServiceType[]>(['tutoring', 'proofreading'])
-  const [scanSubreddits, setScanSubreddits] = useState<string[]>(['UniUK', 'HomeworkHelp', 'proofreading', 'college'])
+  const [scanSubreddits, setScanSubreddits] = useState<string[]>(['UniUK', 'HomeworkHelp', 'proofreading', 'tutors', 'IELTS'])
   const [scanMaxResults, setScanMaxResults] = useState(50)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
@@ -237,7 +411,8 @@ export default function TutorLeadsClient({ userId, initialLeads, tableExists }: 
   // ── Scan ──────────────────────────────────────────────────────────────────────
   async function runScan() {
     if (scanSubjects.length === 0) { toast.error('Select at least one subject'); return }
-    if (scanSubreddits.length === 0) { toast.error('Select at least one subreddit'); return }
+    if (scanPlatforms.length === 0) { toast.error('Select at least one platform'); return }
+    if (scanPlatforms.includes('reddit') && scanSubreddits.length === 0) { toast.error('Select at least one subreddit'); return }
 
     setScanning(true)
     setScanResult(null)
@@ -251,7 +426,9 @@ export default function TutorLeadsClient({ userId, initialLeads, tableExists }: 
         body: JSON.stringify({
           subjects: scanSubjects,
           serviceTypes: scanServices,
-          subreddits: scanSubreddits,
+          subreddits: scanPlatforms.includes('reddit') ? scanSubreddits : [],
+          platforms: scanPlatforms,
+          stackExchangeSites: scanPlatforms.includes('stackexchange') ? scanStackSites : [],
           maxResults: scanMaxResults,
         }),
       })
@@ -282,6 +459,35 @@ export default function TutorLeadsClient({ userId, initialLeads, tableExists }: 
   }
   function toggleSubreddit(s: string) {
     setScanSubreddits(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
+  }
+  function togglePlatform(p: string) {
+    setScanPlatforms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
+  }
+  function toggleStackSite(s: string) {
+    setScanStackSites(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
+  }
+  function toggleCategoryAll(cat: SubredditCategory) {
+    const catValues = cat.items.map(i => i.value)
+    const allSelected = catValues.every(v => scanSubreddits.includes(v))
+    if (allSelected) {
+      setScanSubreddits(prev => prev.filter(v => !catValues.includes(v)))
+    } else {
+      setScanSubreddits(prev => [...new Set([...prev, ...catValues])])
+    }
+  }
+
+  async function checkTableExists() {
+    setCheckingTable(true)
+    const { error } = await supabase.from('tutor_leads').select('id').limit(1)
+    setCheckingTable(false)
+    const exists = !error ||
+      (!error.message.toLowerCase().includes('does not exist') &&
+       !error.message.toLowerCase().includes('relation'))
+    if (exists) {
+      window.location.reload()
+    } else {
+      toast.error('Table not found yet — make sure you ran the SQL in Supabase.')
+    }
   }
 
   // ── Manual add ────────────────────────────────────────────────────────────────
@@ -392,13 +598,25 @@ export default function TutorLeadsClient({ userId, initialLeads, tableExists }: 
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-5">
             <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">One-time database setup required</h3>
             <p className="text-xs text-amber-700 dark:text-amber-400 mb-3">
-              Run this SQL in your{' '}
-              <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="underline">Supabase SQL Editor</a>
-              {' '}to enable TutorLeads.
+              The <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded">tutor_leads</code> table doesn&apos;t exist yet.
+              Copy the SQL below and run it in Supabase — takes 30 seconds.
             </p>
-            <button onClick={() => setShowSql(o => !o)} className="text-xs font-medium text-amber-700 dark:text-amber-400 underline mb-2">
-              {showSql ? 'Hide SQL' : 'Show SQL'}
-            </button>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {sqlEditorUrl && (
+                <a href={sqlEditorUrl} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors">
+                  <ExternalLink size={11} /> Open SQL Editor →
+                </a>
+              )}
+              <button onClick={() => setShowSql(o => !o)}
+                className="px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 rounded-lg">
+                {showSql ? 'Hide SQL' : 'Show SQL to copy'}
+              </button>
+              <button onClick={checkTableExists} disabled={checkingTable}
+                className="px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-lg disabled:opacity-50">
+                {checkingTable ? 'Checking…' : '✓ I\'ve run it — check again'}
+              </button>
+            </div>
             {showSql && (
               <div className="relative mt-2">
                 <pre className="text-xs font-mono bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-lg p-4 overflow-x-auto text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{SQL_SETUP}</pre>
@@ -414,16 +632,103 @@ export default function TutorLeadsClient({ userId, initialLeads, tableExists }: 
         {/* ── SCAN TAB ── */}
         {activeTab === 'scan' && (
           <div className="space-y-5">
-            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-5">
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-6">
               <div>
                 <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Find Students Automatically</h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Scans Reddit for genuine student posts asking for tutoring, proofreading or study help.
-                  New students are added directly to your leads list.
+                  Scans multiple platforms for genuine student posts asking for tutoring, proofreading, or study help.
+                  Genuine requests are added to your leads list automatically. Duplicates are skipped.
                 </p>
               </div>
 
-              {/* Subjects */}
+              {/* ── Platform selector ───────────────────────────────────────────── */}
+              <div>
+                <label className={labelCls}>Platforms to scan <span className="text-red-500">*</span></label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                  {PLATFORM_OPTIONS.map(p => (
+                    <button key={p.value} onClick={() => togglePlatform(p.value)}
+                      className={`flex items-start gap-3 p-3 rounded-xl border-2 text-left transition-all ${
+                        scanPlatforms.includes(p.value)
+                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300'
+                      }`}>
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        scanPlatforms.includes(p.value) ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800'
+                      }`}>
+                        {p.icon}
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-900 dark:text-white">{p.label}</p>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">{p.desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {scanPlatforms.length === 0 && <p className="text-xs text-red-500 mt-1">Select at least one platform</p>}
+              </div>
+
+              {/* ── Stack Exchange sites (when SE selected) ─────────────────────── */}
+              {scanPlatforms.includes('stackexchange') && (
+                <div className="pl-3 border-l-2 border-blue-400">
+                  <label className={labelCls}>Stack Exchange sites</label>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {STACK_EXCHANGE_SITES.map(s => (
+                      <button key={s.value} onClick={() => toggleStackSite(s.value)}
+                        title={s.desc}
+                        className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
+                          scanStackSites.includes(s.value)
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-blue-400'
+                        }`}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Subreddits (when Reddit selected) ───────────────────────────── */}
+              {scanPlatforms.includes('reddit') && (
+                <div className="pl-3 border-l-2 border-orange-400">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className={labelCls + ' mb-0'}>Subreddits to scan <span className="text-red-500">*</span></label>
+                    <span className="text-xs text-gray-400">{scanSubreddits.length} selected</span>
+                  </div>
+                  <div className="space-y-3">
+                    {SUBREDDIT_CATEGORIES.map(cat => {
+                      const allSelected = cat.items.every(i => scanSubreddits.includes(i.value))
+                      return (
+                        <div key={cat.label}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-base">{cat.emoji}</span>
+                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{cat.label}</span>
+                            <button onClick={() => toggleCategoryAll(cat)}
+                              className="ml-auto text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline">
+                              {allSelected ? 'Deselect all' : 'Select all'}
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {cat.items.map(o => (
+                              <button key={o.value} onClick={() => toggleSubreddit(o.value)}
+                                title={o.desc}
+                                className={`px-2 py-1 text-[11px] rounded-lg border transition-colors ${
+                                  scanSubreddits.includes(o.value)
+                                    ? 'bg-orange-500 border-orange-500 text-white'
+                                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-orange-400'
+                                }`}>
+                                {o.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {scanSubreddits.length === 0 && <p className="text-xs text-red-500 mt-1">Select at least one subreddit</p>}
+                </div>
+              )}
+
+              {/* ── Subjects ─────────────────────────────────────────────────────── */}
               <div>
                 <label className={labelCls}>Subjects to find students for <span className="text-red-500">*</span></label>
                 <div className="flex flex-wrap gap-2 mt-1">
@@ -441,7 +746,7 @@ export default function TutorLeadsClient({ userId, initialLeads, tableExists }: 
                 {scanSubjects.length === 0 && <p className="text-xs text-red-500 mt-1">Select at least one subject</p>}
               </div>
 
-              {/* Service type */}
+              {/* ── Service type ─────────────────────────────────────────────────── */}
               <div>
                 <label className={labelCls}>Service type to match</label>
                 <div className="flex flex-wrap gap-2 mt-1">
@@ -458,71 +763,76 @@ export default function TutorLeadsClient({ userId, initialLeads, tableExists }: 
                 </div>
               </div>
 
-              {/* Subreddits */}
-              <div>
-                <label className={labelCls}>Subreddits to scan <span className="text-red-500">*</span></label>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {SUBREDDIT_OPTIONS.map(o => (
-                    <button key={o.value} onClick={() => toggleSubreddit(o.value)}
-                      title={o.desc}
-                      className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                        scanSubreddits.includes(o.value)
-                          ? 'bg-orange-500 border-orange-500 text-white'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-orange-400'
-                      }`}>
-                      {o.label}
-                    </button>
-                  ))}
+              {/* ── Max results + Start ──────────────────────────────────────────── */}
+              <div className="flex items-end gap-4 flex-wrap">
+                <div className="w-40">
+                  <label className={labelCls}>Max results</label>
+                  <select value={scanMaxResults} onChange={e => setScanMaxResults(Number(e.target.value))} className={inputCls}>
+                    {[25, 50, 100, 150, 200].map(n => <option key={n} value={n}>{n} leads</option>)}
+                  </select>
                 </div>
-                {scanSubreddits.length === 0 && <p className="text-xs text-red-500 mt-1">Select at least one subreddit</p>}
+                <button
+                  onClick={runScan}
+                  disabled={
+                    scanning ||
+                    scanSubjects.length === 0 ||
+                    scanPlatforms.length === 0 ||
+                    (scanPlatforms.includes('reddit') && scanSubreddits.length === 0)
+                  }
+                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors text-sm">
+                  {scanning
+                    ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Scanning… {scanElapsed}s</>
+                    : <><Radar size={16} /> Find Students Now</>}
+                </button>
               </div>
-
-              {/* Max results */}
-              <div className="max-w-xs">
-                <label className={labelCls}>Max results to scan</label>
-                <select value={scanMaxResults} onChange={e => setScanMaxResults(Number(e.target.value))} className={inputCls}>
-                  {[25, 50, 100, 150, 200].map(n => <option key={n} value={n}>{n} leads</option>)}
-                </select>
-              </div>
-
-              {/* Start button */}
-              <button
-                onClick={runScan}
-                disabled={scanning || scanSubjects.length === 0 || scanSubreddits.length === 0}
-                className="flex items-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors">
-                {scanning
-                  ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Scanning Reddit… {scanElapsed}s</>
-                  : <><Radar size={16} /> Find Students Now</>}
-              </button>
 
               <p className="text-xs text-gray-400">
-                Uses Reddit&apos;s public search API — no API key needed. Finds posts where students are actively asking for help, then adds them as leads automatically. Duplicates are skipped.
+                Reddit uses the public JSON API — no key needed. Stack Exchange uses their free public API.
+                The scanner also runs a global Reddit search for &quot;tutor wanted&quot; posts in addition to the subreddits you selected.
               </p>
             </div>
 
             {/* Scan result */}
             {scanResult && (
-              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-5">
+              <div className={`rounded-xl p-5 border ${
+                scanResult.newLeads > 0
+                  ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                  : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+              }`}>
                 <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle size={18} className="text-green-600" />
-                  <h3 className="text-sm font-semibold text-green-800 dark:text-green-300">Scan complete</h3>
+                  <CheckCircle size={18} className={scanResult.newLeads > 0 ? 'text-green-600' : 'text-amber-600'} />
+                  <h3 className={`text-sm font-semibold ${scanResult.newLeads > 0 ? 'text-green-800 dark:text-green-300' : 'text-amber-800 dark:text-amber-300'}`}>
+                    Scan complete
+                  </h3>
                 </div>
-                <div className="grid grid-cols-3 gap-4 mb-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
                   {[
-                    { label: 'Posts found', value: scanResult.found },
+                    { label: 'Posts scanned', value: scanResult.rawPostsScanned ?? '—' },
+                    { label: 'Genuine requests', value: scanResult.found },
                     { label: 'New leads added', value: scanResult.newLeads },
                     { label: 'Duplicates skipped', value: scanResult.duplicatesSkipped },
                   ].map(s => (
                     <div key={s.label} className="text-center">
-                      <p className="text-2xl font-bold text-green-700 dark:text-green-400">{s.value}</p>
-                      <p className="text-xs text-green-600 dark:text-green-500">{s.label}</p>
+                      <p className={`text-xl font-bold ${scanResult.newLeads > 0 ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>{s.value}</p>
+                      <p className={`text-[11px] ${scanResult.newLeads > 0 ? 'text-green-600 dark:text-green-500' : 'text-amber-600 dark:text-amber-500'}`}>{s.label}</p>
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-green-700 dark:text-green-400">{scanResult.message}</p>
-                <button onClick={() => setActiveTab('leads')} className="mt-3 text-xs font-medium text-green-700 dark:text-green-400 underline">
-                  View leads →
-                </button>
+                {scanResult.bySource && scanResult.bySource.length > 0 && (
+                  <div className="flex gap-3 mb-3 flex-wrap">
+                    {scanResult.bySource.map(src => (
+                      <span key={src.source} className="text-[11px] bg-white/60 dark:bg-black/20 px-2 py-0.5 rounded-full">
+                        {src.source}: {src.found} found, {src.added} added
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className={`text-xs ${scanResult.newLeads > 0 ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>{scanResult.message}</p>
+                {scanResult.newLeads > 0 && (
+                  <button onClick={() => setActiveTab('leads')} className="mt-3 text-xs font-medium text-green-700 dark:text-green-400 underline">
+                    View leads →
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -599,35 +909,50 @@ export default function TutorLeadsClient({ userId, initialLeads, tableExists }: 
         {/* ── TIPS TAB ── */}
         {activeTab === 'tips' && (
           <div className="space-y-4">
+            <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl p-4">
+              <p className="text-xs font-semibold text-indigo-800 dark:text-indigo-300 mb-1">Strategy overview</p>
+              <p className="text-xs text-indigo-700 dark:text-indigo-400">
+                The &quot;Find Students&quot; tab automates Reddit and Stack Exchange. Everything below is manual — but Facebook and Twitter alone can generate 10+ leads per week with consistent posting.
+              </p>
+            </div>
+
             {FINDING_SOURCES.map(src => (
               <div key={src.category} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-1">
                   {src.icon}
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{src.category}</h3>
+                  <span className={`ml-auto px-2 py-0.5 text-[10px] font-medium rounded-full ${src.badgeColor}`}>{src.badge}</span>
                 </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{src.intro}</p>
                 <div className="space-y-2">
                   {src.tips.map(tip => (
-                    <div key={tip.label} className="flex items-start justify-between gap-2">
+                    <div key={tip.label} className="flex items-start justify-between gap-2 py-1 border-t border-gray-50 dark:border-gray-800 first:border-0">
                       <div>
                         <p className="text-xs font-medium text-gray-800 dark:text-gray-200">{tip.label}</p>
-                        <p className="text-xs text-gray-400">{tip.desc}</p>
+                        <p className="text-[11px] text-gray-400">{tip.desc}</p>
                       </div>
                       {tip.url && (
-                        <a href={tip.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 flex-shrink-0">
-                          <ExternalLink size={12} />
+                        <a href={tip.url} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 flex-shrink-0 hover:underline text-[11px]">
+                          Search <ExternalLink size={10} />
                         </a>
                       )}
                     </div>
                   ))}
                 </div>
+                {src.template && (
+                  <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Template message</p>
+                    <p className="text-xs text-gray-700 dark:text-gray-300 italic">{src.template}</p>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(src.template!); toast.success('Template copied') }}
+                      className="mt-2 flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline">
+                      <Copy size={10} /> Copy template
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
-            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
-              <p className="text-xs font-semibold text-green-800 dark:text-green-300 mb-1">✓ Best outreach message</p>
-              <p className="text-xs text-green-700 dark:text-green-400">
-                When you find a student post, reply: <em>"Hi! I saw you need help with [subject]. I offer [service] sessions and have helped many students at [university type] improve their grades. DM me for a free 30-minute trial session?"</em>
-              </p>
-            </div>
           </div>
         )}
 
