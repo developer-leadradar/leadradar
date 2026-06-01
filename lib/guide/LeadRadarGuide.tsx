@@ -1068,44 +1068,60 @@ export function LeadRadarGuide() {
           <SectionBanner num="12" title="TutorLeads" subtitle="Finding students who need academic help" />
 
           <Text style={s.body}>
-            TutorLeads is a separate section for your academic tutoring business. It helps you find
-            international students on Reddit and other platforms who are actively looking for tutoring,
-            proofreading, coaching, or exam preparation help. Click "TutorLeads" in the sidebar.
+            TutorLeads is a separate section for your academic tutoring business. It finds international
+            students on Reddit, Stack Exchange, Facebook, Discord, Telegram, Twitter/X, Quora, and LinkedIn
+            who are actively seeking tutoring, proofreading, coaching, or exam prep. Click "TutorLeads"
+            in the sidebar to access it.
           </Text>
 
           <Text style={s.h2}>The Four Tabs</Text>
 
           <Text style={s.h3}>My Leads</Text>
           <Text style={s.body}>
-            Your full list of student leads with a stats bar at the top (total students, active pipeline,
-            sessions completed, total earned). Filter by status using the pipeline buttons.
-            Click any lead to open the detail panel with contact info, Reddit post, session tracking, and notes.
+            Your full list of student leads with a stats bar (total students, active pipeline, sessions
+            completed, total earned). Filter by status. Click any lead to open the detail panel with
+            contact info, the original scraped post, session tracking, and notes.
           </Text>
 
           <Text style={s.h3}>Find Students (Auto-Scan)</Text>
           <Text style={s.body}>
-            This is the automated scanner. It searches Reddit's public posts for students asking for help.
-            No API key needed — Reddit's public search is completely free.
+            The automated scanner. Searches Reddit and Stack Exchange for genuine student posts.
+            No API key required for either — both are free public APIs.
           </Text>
 
-          <Step num={1} title="Choose subjects" body="Select the academic subjects you teach: Mathematics, Physics, Chemistry, English, Essay Writing, IELTS/TOEFL Prep, Statistics, and more. You can select multiple." />
-          <Step num={2} title="Choose service types" body="Select what services you offer: Tutoring, Proofreading/Editing, Exam Prep, Coaching, Research Guidance." />
-          <Step num={3} title="Choose subreddits" body="Select which Reddit communities to search. Pre-loaded with the best ones: r/HomeworkHelp, r/learnmath, r/IELTS, r/AskAcademia, r/GradSchool, and 8 more." />
-          <Step num={4} title="Set max results" body="Start with 20–50. The scanner deduplicates automatically — you will never see the same Reddit user twice." />
-          <Step num={5} title="Click Find Students Now" body="The scan runs (takes 15–30 seconds) and adds matching students directly to your My Leads tab." />
+          <Step num={1} title="Choose platforms" body="Toggle Reddit (50+ subreddits) and/or Stack Exchange (Academia SE + English Language Learners SE). Reddit is the primary source; Stack Exchange adds academic tutoring requests." />
+          <Step num={2} title="Select subreddits" body="Over 50 subreddits organised into 6 categories: UK Students (r/UniUK, r/alevel, r/GCSE), US Students (r/college, r/SAT), Graduate (r/GradSchool, r/MCAT, r/LSAT), Exam Prep (r/IELTS, r/GRE, r/GMAT), Academic Help (r/HomeworkHelp, r/tutors, r/proofreading), and Subject-Specific (r/learnmath, r/learnprogramming, r/EnglishLearning). Use 'Select all' per category." />
+          <Step num={3} title="Choose subjects" body="Select the academic subjects you teach. The scanner matches posts mentioning those subjects." />
+          <Step num={4} title="Choose service types" body="Tutoring, Proofreading/Editing, Exam Prep, Study Coaching, Research Guidance." />
+          <Step num={5} title="Set max results and click Find Students Now" body="Start with 50 results. The scanner also runs a global Reddit search for 'tutor wanted' posts in addition to the subreddits you selected. Duplicates are skipped automatically." />
+
+          <TipBox title="What the scanner shows you">
+            The result card shows: total posts scanned, genuine requests found, new leads added, and
+            duplicates skipped. If 0 posts matched, the message tells you how many raw posts were
+            scanned so you can tell whether Reddit responded or not.
+          </TipBox>
 
           <Text style={s.h3}>Add Manually</Text>
           <Text style={s.body}>
-            Add a student lead manually with a form: name, contact method (WhatsApp, email, Reddit, etc.),
+            Add a student lead manually: name, contact method (WhatsApp, email, Reddit, Instagram, etc.),
             university, country, subject, service type, hourly rate, and notes.
-            Use this for leads you find yourself outside the scanner.
           </Text>
 
           <Text style={s.h3}>Where to Look</Text>
           <Text style={s.body}>
-            Tips for finding students manually on Reddit, Facebook Groups, LinkedIn, Instagram, and TikTok.
-            Useful when the scanner does not surface enough leads for a niche subject.
+            Detailed manual sourcing guides with clickable search links for: Facebook Groups (8 specific
+            groups including Nigerian Students UK, International Students, IELTS groups), Twitter/X (live
+            searches for "need a tutor", #NeedATutor), Discord student servers (Study Together and more),
+            Telegram study groups, Quora tutoring searches, and LinkedIn post templates. Every platform
+            has a copy-able outreach message template built in.
           </Text>
+        </View>
+        <PageFooter />
+      </Page>
+
+      <Page size="A4" style={s.page}>
+        <PageHeader section="Section 12 — TutorLeads (continued)" />
+        <View style={{ marginTop: 20 }}>
 
           <Text style={s.h2}>Student Pipeline Stages</Text>
           <View style={s.pipelineRow}>
@@ -1122,20 +1138,53 @@ export function LeadRadarGuide() {
               </View>
             ))}
           </View>
+          <Text style={s.body}>
+            Move a student through stages by clicking their row → Edit → click the stage buttons.
+            Track sessions completed and total earned as you work with each student.
+          </Text>
 
           <Text style={s.h2}>WhatsApp Direct Links</Text>
           <Text style={s.body}>
-            If a student's contact is their WhatsApp number, the lead detail panel shows a green WhatsApp button
-            that opens a pre-filled message in your WhatsApp app — no copying and pasting needed.
+            If a student's contact is their WhatsApp number, the lead detail panel shows a green WhatsApp
+            button that opens a pre-filled message in your WhatsApp app — no copying needed.
           </Text>
 
+          <Text style={s.h2}>Platform Sources for Manual Outreach</Text>
+
+          <View style={s.table}>
+            <View style={s.tableHeader}>
+              <Text style={[s.tableCellHeader, { flex: 1 }]}>Platform</Text>
+              <Text style={[s.tableCellHeader, { flex: 3 }]}>Best approach</Text>
+            </View>
+            {[
+              ['Facebook Groups', 'Join "Nigerian Students UK", "International Students UK", "IELTS Preparation" groups. Post your offer once weekly. Links to search each group are in the Where to Look tab.'],
+              ['Twitter / X', 'Live search links in the app: "need a tutor", "need proofreading", #NeedATutor. Check daily, reply directly.'],
+              ['Discord', 'Join Study Together and subject-specific servers. Look for #homework-help channels and offer help.'],
+              ['Telegram', 'Search for IELTS prep groups and Nigerian/African student communities. Very active with tutoring requests.'],
+              ['Quora', 'Search "need a tutor for [subject]" — answer helpfully and mention you offer sessions in your profile.'],
+              ['LinkedIn', 'Post weekly tutoring offers. Search for "looking for tutor" posts. LinkedIn works best for MBA, CFA, IELTS leads.'],
+            ].map(([plat, approach], i, arr) => (
+              <View key={plat} style={i < arr.length - 1 ? s.tableRow : s.tableRowLast}>
+                <Text style={[s.tableCell, { flex: 1, fontFamily: 'Helvetica-Bold' }]}>{plat}</Text>
+                <Text style={[s.tableCell, { flex: 3 }]}>{approach}</Text>
+              </View>
+            ))}
+          </View>
+
           <Text style={s.h2}>Setting Up the TutorLeads Database</Text>
-          <WarningBox title="One-time setup required">
-            TutorLeads uses a separate database table that needs to be created manually in Supabase.
-            If you see a banner on the TutorLeads page saying "Database table not set up yet", click
-            the "Copy SQL" button, go to your Supabase project → SQL Editor, paste and run the SQL.
-            This only needs to be done once.
-          </WarningBox>
+          <InfoBox title="One-time setup — takes 30 seconds">
+            TutorLeads uses a separate database table. If you see an amber banner on the TutorLeads page,
+            click the orange "Open SQL Editor →" button — it opens your Supabase project's SQL editor
+            directly. Click "Show SQL to copy", paste it in, and click Run. Then click "I've run it —
+            check again" in the banner. The banner disappears and the scanner becomes active.
+          </InfoBox>
+
+          <TipBox title="Best outreach message for Reddit">
+            When the scanner finds a student post, reply to it on Reddit: "Hi! I saw you need help with
+            [subject]. I offer 1-on-1 [service] sessions and have helped many students improve their grades.
+            I have a free 30-minute trial if you'd like to give it a try — DM me!" Then log the student
+            manually in TutorLeads to track them through your pipeline.
+          </TipBox>
         </View>
         <PageFooter />
       </Page>
